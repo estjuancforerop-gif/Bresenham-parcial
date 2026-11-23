@@ -2,22 +2,22 @@
 //  interfaz.h
 //  Autor: Juan Camilo Forero Paez
 //
-//  esto sirve para: todo lo que el usuario ve y toca. la barra de
-//  herramientas (hecha con Dear ImGui) y la lectura del mouse y teclado.
+//  Este archivo declara todo lo que el usuario ve y toca: el panel de
+//  herramientas (hecho con Dear ImGui) y la lectura del mouse y teclado.
 // ====================================================================
 #pragma once
 
 struct GLFWwindow;   // solo aviso que existe, no necesito todo GLFW aqui
 
-// tamanos de la ventana (en pixeles)
-const int ALTO_BARRA_PX    = 70;    // alto de la barra de herramientas
-const int ANCHO_INICIAL_PX = 800;   // ancho de la ventana al abrir
-const int ALTO_INICIAL_PX  = 870;   // alto al abrir (barra + 800 de grilla)
-const int ANCHO_MINIMO_PX  = 400;   // ancho minimo para la barra
-const int ALTO_MINIMO_PX   = 300;
+// Estas constantes guardan los tamanos de la ventana (en pixeles)
+const int ANCHO_PANEL_PX   = 230;   // ancho del panel de herramientas (queda a la izquierda)
+const int ANCHO_INICIAL_PX = 1030;  // ancho de la ventana al abrir (panel + 800 de grilla)
+const int ALTO_INICIAL_PX  = 800;   // alto de la ventana al abrir
+const int ANCHO_MINIMO_PX  = 630;   // ancho minimo para que quepa el panel y algo de grilla
+const int ALTO_MINIMO_PX   = 600;   // alto minimo para que quepa todo el panel
 
-// esto sirve para saber en que parte de la ventana esta la grilla
-// (esta justo debajo de la barra y ocupa todo lo que sobra)
+// Esta estructura guarda en que parte de la ventana esta la grilla
+// (esta a la derecha del panel y ocupa todo lo que sobra).
 struct Lienzo
 {
     float x, y;          // esquina de arriba-izquierda
@@ -25,14 +25,14 @@ struct Lienzo
 };
 extern Lienzo lienzo;
 
-void calcularLienzo();          // recalcula el lienzo con el tamano actual de la ventana
+void calcularLienzo();          // Esta funcion realiza el recalculo del lienzo con el tamano actual de la ventana
 
 void iniciarGUI(GLFWwindow* window);
 void comenzarCuadroGUI();
 void terminarCuadroGUI();
 void cerrarGUI();
 
-void dibujarBarra();             // la barra de herramientas
-void procesarMouse();            // clicks sobre la grilla
-void procesarTeclado();          // atajos (Ctrl+Z, Supr, Esc, Enter)
-void dibujarCasillaBajoMouse();  // borde blanco en la casilla donde esta el mouse
+void dibujarPanel();             // Esta funcion realiza el panel de herramientas
+void procesarMouse();            // Esta funcion realiza la lectura de clicks sobre la grilla
+void procesarTeclado();          // Esta funcion realiza la lectura de atajos (Ctrl+Z, Supr, Esc, Enter)
+void dibujarCasillaBajoMouse();  // Esta funcion realiza el borde blanco en la casilla donde esta el mouse

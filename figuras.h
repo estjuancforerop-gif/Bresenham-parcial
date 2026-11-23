@@ -2,23 +2,24 @@
 //  figuras.h
 //  Autor: Juan Camilo Forero Paez
 //
-//  esto sirve para: guardar la lista de figuras que dibujo y todo lo que
-//  les puedo hacer (rellenar, rotar, escalar, deshacer).
-//  la grilla no guarda las figuras, solo los colores. las figuras viven
+//  Este archivo guarda la lista de figuras que dibujo y todo lo que les
+//  puedo hacer (rellenar, rotar, escalar, deshacer).
+//  La grilla no guarda las figuras, solo los colores. Las figuras viven
 //  aqui y la grilla se repinta desde cero cada vez que algo cambia.
 // ====================================================================
 #pragma once
 #include <vector>
 #include "grilla.h"
 
-// esto sirve para guardar un punto con decimales. uso decimales (y no
+// Esta estructura guarda un punto con decimales. Uso decimales (y no
 // casillas enteras) para que al rotar varias veces la figura no se vaya
-// deformando por los redondeos
+// deformando por los redondeos.
 struct Punto
 {
     double x, y;
 };
 
+// Esta enumeracion guarda los tipos de figura que se pueden dibujar.
 enum TipoFigura
 {
     FIGURA_LINEA,
@@ -28,7 +29,7 @@ enum TipoFigura
     FIGURA_LIBRE         // poligono con los puntos que yo quiera
 };
 
-// esto sirve para guardar una figura ya terminada:
+// Esta estructura guarda una figura ya terminada:
 //   linea      -> 2 puntos
 //   rectangulo -> 4 puntos (las 4 esquinas)
 //   triangulo  -> 3 puntos
@@ -40,12 +41,12 @@ struct Figura
     std::vector<Punto> puntos;
     double             radio;    // solo lo usa el circulo
     bool               relleno;  // true = la figura esta rellena
-    Color              color;
-    Color              colorRelleno; // color independiente del interior
+    Color              color;    // color del contorno
+    Color              colorRelleno; // color del interior (independiente del contorno)
 };
 
-// esto sirve para recordar los clicks de la figura que todavia no termino
-// (por ejemplo, el triangulo cuando llevo 2 de sus 3 clicks)
+// Esta estructura recuerda los clicks de la figura que todavia no termino
+// (por ejemplo, el triangulo cuando llevo 2 de sus 3 clicks).
 struct FiguraEnCurso
 {
     bool               activa;

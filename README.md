@@ -27,7 +27,7 @@ El programa guarda cada figura como datos independientes (puntos, radio, colores
 | Triángulos en la cuadrícula | `FIGURA_TRIANGULO` (3 clics) |
 | Cuadrados y rectángulos | `FIGURA_RECTANGULO` (2 clics; con Shift sale cuadrado perfecto) |
 | Relleno de primitivas | `algoritmos.cpp` → `rellenarContorno` (inundación) usado por `figuras.cpp` |
-| Transformaciones lineales | `figuras.cpp` → `actualizarPuntos`, `rotarFigura`, `escalarFigura` |
+| Transformaciones lineales | `figuras.cpp` → `aplicarMatriz`, `rotarFigura`, `escalarFigura` |
 | Interfaz con Dear ImGui | `interfaz.cpp` (panel, selector de color, mouse y teclado) |
 
 ## Arquitectura del proyecto
@@ -94,13 +94,9 @@ Cada punto se multiplica por una matriz 2×2 alrededor del centro de la figura (
 ```
 
 - **Rotación:** `| cos θ  -sin θ ; sin θ  cos θ |`. Como la Y de la pantalla crece hacia abajo, un ángulo positivo gira en el sentido de las manecillas del reloj.
-- **Escala:** `| s  0 ; 0  s |`, donde `s` es un porcentaje entero (100 = tamaño original, 200 = el doble).
+- **Escala:** `| s  0 ; 0  s |`.
 
-**Todo con enteros:** no se usan `double` ni `float` en los cálculos. El seno y el coseno se guardan en una tabla de 0° a 90° multiplicados por 1000 (por ejemplo `sen 30° = 500`); los demás cuadrantes salen por simetría (`senoX1000`, `cosenoX1000`). Después de multiplicar se divide entre 1000 con una división entera que redondea al más cercano (`dividirRedondeando`).
-
-**Sin acumular error:** cada figura guarda sus puntos originales (`puntosBase`), el ángulo total (`angulo`) y la escala total (`escala`). Cada vez que se rota o escala, los puntos se recalculan desde la base, así 24 giros de 15° dejan la figura exactamente como empezó.
-
-**Radio del círculo:** es la mayor de las dos distancias (horizontal o vertical) entre el centro y el segundo clic, por lo que no hace falta raíz cuadrada.
+Los puntos se guardan con decimales para que varias rotaciones seguidas no deformen la figura; solo se redondean a casillas al momento de dibujar.
 
 ## Interfaz y controles
 
@@ -116,7 +112,7 @@ El panel de la izquierda (una sola ventana de Dear ImGui) tiene tres bloques:
 | | Forma libre | Un clic por vértice. Se cierra con el botón **Cerrar forma**, **Enter** o **clic derecho** (mínimo 3 puntos) |
 | Editar figura | Rellenar | Clic dentro de una figura: la rellena con el color de relleno |
 | | Rotar + deslizador `grados` | Clic sobre una figura: la gira esos grados (de -180 a 180; negativo gira al otro lado) |
-| | Escalar + deslizador `porcentaje` | Clic sobre una figura: la escala por ese porcentaje (de 50% a 200%; 125% = 25% más grande) |
+| | Escalar + deslizador `factor` | Clic sobre una figura: la escala por ese factor (de 0.5 a 2.0) |
 | Colores | `borde` y `relleno` | Selectores de color (clic en el cuadrito) |
 
 Abajo del panel hay dos botones (**Deshacer** y **Borrar todo**), un texto de ayuda de la herramienta elegida y la casilla donde está el mouse.

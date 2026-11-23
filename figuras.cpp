@@ -1,6 +1,10 @@
 // ====================================================================
 //  figuras.cpp
 //  Autor: Juan Camilo Forero Paez
+//
+//  Aqui vive la lista de figuras y todo lo que se les hace: crearlas desde
+//  los clicks, calcular su contorno (Bresenham) y su interior (inundacion),
+//  repintar la grilla, deshacer y aplicar transformaciones lineales.
 // ====================================================================
 #include "figuras.h"
 #include "algoritmos.h"
@@ -17,13 +21,15 @@ static const double PI = 3.14159265358979323846;
 
 // --------------------------------------------------------------------
 // DESHACER
-// esto sirve para poder deshacer cualquier cosa (dibujar, rellenar, rotar,
-// borrar todo): antes de cambiar algo guardo una copia de TODA la lista, y
-// deshacer solo vuelve a la ultima copia.
+// Esta seccion realiza el deshacer de cualquier cosa (dibujar, rellenar,
+// rotar, borrar todo): antes de cambiar algo guardo una copia de TODA la
+// lista, y deshacer solo vuelve a la ultima copia.
 // --------------------------------------------------------------------
 static std::vector<std::vector<Figura>> historial;
 static const size_t MAXIMO_HISTORIAL = 100;
 
+// Esta funcion realiza el guardado de una copia de la lista antes de un cambio
+// (si ya hay 100 copias, borra la mas vieja).
 static void guardarParaDeshacer()
 {
     historial.push_back(figuras);
@@ -31,6 +37,7 @@ static void guardarParaDeshacer()
         historial.erase(historial.begin());
 }
 
+// Esta funcion realiza el deshacer: vuelve a la ultima copia guardada.
 void deshacer()
 {
     if (historial.empty()) return;
@@ -39,6 +46,7 @@ void deshacer()
     grillaCambio = true;
 }
 
+// Esta funcion realiza el borrado de todas las figuras (se puede deshacer).
 void borrarTodo()
 {
     if (figuras.empty()) return;
@@ -51,12 +59,13 @@ void borrarTodo()
 // CONVERTIR ENTRE PUNTOS Y CASILLAS
 // --------------------------------------------------------------------
 
-// esto sirve para pasar un punto con decimales a la casilla mas cercana
+// Esta funcion realiza el paso de un punto con decimales a la casilla mas cercana.
 static Celda aCelda(const Punto& p)
 {
     return Celda((int)std::lround(p.x), (int)std::lround(p.y));
 }
 
+// Esta funcion realiza el paso de todos los puntos de una figura a casillas enteras.
 static std::vector<Celda> casillasDeLosPuntos(const Figura& f)
 {
     std::vector<Celda> lista;
@@ -67,8 +76,8 @@ static std::vector<Celda> casillasDeLosPuntos(const Figura& f)
 
 // --------------------------------------------------------------------
 // CREAR UNA FIGURA A PARTIR DE LOS CLICKS
-// esto sirve para convertir los clicks (casillas) en una figura con
-// puntos. cada tipo usa los clicks de forma distinta.
+// Esta funcion realiza la creacion de una figura a partir de los clicks
+// (casillas). Cada tipo usa los clicks de forma distinta.
 // --------------------------------------------------------------------
 Figura crearFigura(TipoFigura tipo, const std::vector<Celda>& clicks, Color color)
 {
@@ -122,7 +131,8 @@ Figura crearFigura(TipoFigura tipo, const std::vector<Celda>& clicks, Color colo
 // CALCULAR LAS CASILLAS DE UNA FIGURA
 // --------------------------------------------------------------------
 
-// esto sirve para sacar el contorno: llama al algoritmo que le toca a cada tipo
+// Esta funcion realiza el calculo del contorno: llama al algoritmo de
+// Bresenham que le toca a cada tipo (linea, circulo o poligono).
 static std::vector<Celda> contornoDeFigura(const Figura& f)
 {
     std::vector<Celda> celdas;
@@ -144,86 +154,20 @@ static std::vector<Celda> contornoDeFigura(const Figura& f)
     return celdas;
 }
 
-// esto sirve para sacar el interior (la linea no tiene interior)
-static bool puntoEnPoligono(const std::vector<Punto>& puntos, double x, double y)
-{
-    if (puntos.size() < 3) return false;
-    bool dentro = false;
-    for (size_t i = 0, j = puntos.size() - 1; i < puntos.size(); j = i++)
-    {
-        const Punto& a = puntos[i];
-        const Punto& b = puntos[j];
-        double cruz = (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
-        double minX = std::min(a.x, b.x) - 1e-8, maxX = std::max(a.x, b.x) + 1e-8;
-        double minY = std::min(a.y, b.y) - 1e-8, maxY = std::max(a.y, b.y) + 1e-8;
-        if (std::fabs(cruz) < 1e-8 && x >= minX && x <= maxX && y >= minY && y <= maxY)
-            return true; // tambien cuenta el borde
-        if (((a.y > y) != (b.y > y)) &&
-            (x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x))
-            dentro = !dentro;
-    }
-    return dentro;
-}
-
-static bool celdaPerteneceFigura(const Figura& f, int columna, int fila)
-{
-    if (f.tipo == FIGURA_LINEA || f.puntos.empty()) return false;
-    if (f.tipo == FIGURA_CIRCULO)
-    {
-        double dx = (double)columna - f.puntos[0].x;
-        double dy = (double)fila - f.puntos[0].y;
-        double radio = f.radio + 0.5;
-        return dx * dx + dy * dy <= radio * radio;
-    }
-    // Las coordenadas representan casillas; se prueba el centro de cada casilla.
-    return puntoEnPoligono(f.puntos, columna + 0.5, fila + 0.5);
-}
-
-// Interior calculado directamente con la geometria, sin depender de que
-// el contorno rasterizado cierre perfectamente todos sus pixeles.
+// Esta funcion realiza el calculo del interior de una figura. Primero saca
+// el contorno con Bresenham y luego se lo pasa al relleno por inundacion
+// (rellenarContorno). La linea no tiene interior, por eso devuelve vacio.
 static std::vector<Celda> interiorDeFigura(const Figura& f)
 {
-    std::vector<Celda> interior;
-    if (f.tipo == FIGURA_LINEA || f.puntos.empty()) return interior;
-
-    double minX, maxX, minY, maxY;
-    if (f.tipo == FIGURA_CIRCULO)
-    {
-        minX = f.puntos[0].x - f.radio - 1.0;
-        maxX = f.puntos[0].x + f.radio + 1.0;
-        minY = f.puntos[0].y - f.radio - 1.0;
-        maxY = f.puntos[0].y + f.radio + 1.0;
-    }
-    else
-    {
-        minX = maxX = f.puntos[0].x;
-        minY = maxY = f.puntos[0].y;
-        for (size_t i = 1; i < f.puntos.size(); ++i)
-        {
-            minX = std::min(minX, f.puntos[i].x); maxX = std::max(maxX, f.puntos[i].x);
-            minY = std::min(minY, f.puntos[i].y); maxY = std::max(maxY, f.puntos[i].y);
-        }
-    }
-
-    int x0 = std::max(0, (int)std::floor(minX));
-    int x1 = std::min(columnas - 1, (int)std::ceil(maxX));
-    int y0 = std::max(0, (int)std::floor(minY));
-    int y1 = std::min(filas - 1, (int)std::ceil(maxY));
-
-    const std::vector<Celda> borde = contornoDeFigura(f);
-    for (int y = y0; y <= y1; ++y)
-        for (int x = x0; x <= x1; ++x)
-            if (celdaPerteneceFigura(f, x, y) &&
-                std::find(borde.begin(), borde.end(), Celda(x, y)) == borde.end())
-                interior.push_back({ x, y });
-    return interior;
+    if (f.tipo == FIGURA_LINEA || f.puntos.empty()) return std::vector<Celda>();
+    return rellenarContorno(contornoDeFigura(f));
 }
 
 // --------------------------------------------------------------------
 // REPINTAR LA GRILLA
-// esto sirve para dibujar todo: limpio la grilla y pinto las figuras en
-// orden (la ultima queda encima). si la figura esta rellena, pinto primero
-// el interior y luego el contorno encima.
+// Esta funcion realiza el dibujo de todo: limpio la grilla y pinto las
+// figuras en orden (la ultima queda encima). Si la figura esta rellena,
+// pinto primero el interior y luego el contorno encima.
 // --------------------------------------------------------------------
 void repintarGrilla()
 {
@@ -251,7 +195,7 @@ void repintarGrilla()
 // AGREGAR UNA FIGURA (y mostrarla por consola)
 // --------------------------------------------------------------------
 
-// esto sirve para escribir una descripcion corta de la figura
+// Esta funcion realiza la escritura de una descripcion corta de la figura.
 static void describirFigura(const Figura& f, char* texto, size_t tamano)
 {
     std::vector<Celda> p = casillasDeLosPuntos(f);
@@ -284,8 +228,9 @@ static void describirFigura(const Figura& f, char* texto, size_t tamano)
     }
 }
 
-// esto sirve para ver por consola, paso a paso, las casillas que calculo el
-// algoritmo (me sirve para explicarlo en el video)
+// Esta funcion realiza el guardado de la figura nueva y ademas imprime por
+// consola, paso a paso, las casillas que calculo el algoritmo (sirve para
+// explicarlo en el video).
 void agregarFigura(const Figura& figura)
 {
     guardarParaDeshacer();
@@ -302,6 +247,7 @@ void agregarFigura(const Figura& figura)
                   << ", fila " << celdas[k].second << ")" << std::endl;
 }
 
+// Esta funcion realiza la cancelacion de la figura que estaba a medias.
 void cancelarFiguraEnCurso()
 {
     if (!enCurso.activa) return;
@@ -312,9 +258,10 @@ void cancelarFiguraEnCurso()
 
 // --------------------------------------------------------------------
 // ELEGIR UNA FIGURA CON EL MOUSE
-// esto sirve para saber sobre cual figura hice click. reviso desde la
-// ultima (la que esta encima) hasta la primera, y miro tanto el contorno
-// como el interior (asi puedo hacer click adentro de una figura sin rellenar).
+// Esta funcion realiza la busqueda de la figura sobre la que hice click.
+// Reviso desde la ultima (la que esta encima) hasta la primera, y miro
+// tanto el contorno como el interior (asi puedo hacer click adentro de una
+// figura sin rellenar). Devuelve su posicion en la lista, o -1 si no hay.
 // --------------------------------------------------------------------
 int figuraEnCelda(int columna, int fila)
 {
@@ -322,14 +269,19 @@ int figuraEnCelda(int columna, int fila)
     for (int i = (int)figuras.size() - 1; i >= 0; --i)
     {
         const Figura& f = figuras[i];
+
         std::vector<Celda> contorno = contornoDeFigura(f);
-        if (std::find(contorno.begin(), contorno.end(), buscada) != contorno.end() ||
-            celdaPerteneceFigura(f, columna, fila))
+        if (std::find(contorno.begin(), contorno.end(), buscada) != contorno.end())
+            return i;
+
+        std::vector<Celda> interior = interiorDeFigura(f);
+        if (std::find(interior.begin(), interior.end(), buscada) != interior.end())
             return i;
     }
     return -1;
 }
 
+// Esta funcion realiza el cambio de relleno: si estaba rellena la deja vacia y viceversa.
 void alternarRelleno(int indice)
 {
     if (indice < 0 || indice >= (int)figuras.size()) return;
@@ -338,7 +290,7 @@ void alternarRelleno(int indice)
     grillaCambio = true;
 }
 
-// Aplica el color elegido al contorno y activa el relleno de la figura.
+// Esta funcion realiza el cambio de color del contorno y activa el relleno de la figura.
 void aplicarColorFigura(int indice, Color color, Color colorRelleno)
 {
     if (indice < 0 || indice >= (int)figuras.size()) return;
@@ -349,7 +301,7 @@ void aplicarColorFigura(int indice, Color color, Color colorRelleno)
     grillaCambio = true;
 }
 
-// Rellena la figura con el color elegido sin modificar el color del borde.
+// Esta funcion realiza el relleno de la figura con el color elegido sin cambiar el color del borde.
 void aplicarRellenoFigura(int indice, Color colorRelleno)
 {
     if (indice < 0 || indice >= (int)figuras.size()) return;
@@ -362,7 +314,7 @@ void aplicarRellenoFigura(int indice, Color colorRelleno)
 
 // --------------------------------------------------------------------
 // TRANSFORMACIONES LINEALES
-// una transformacion lineal en 2D es multiplicar cada punto por una
+// Una transformacion lineal en 2D es multiplicar cada punto por una
 // matriz 2x2:
 //
 //      | x' |   | a  b |   | x |
@@ -370,13 +322,13 @@ void aplicarRellenoFigura(int indice, Color colorRelleno)
 //      | y' |   | c  d |   | y |                   y' = c*x + d*y
 //
 // OJO: eso gira o escala alrededor del origen (0, 0), que es la esquina
-// de la grilla. yo quiero que la figura gire sobre SU PROPIO centro, entonces:
+// de la grilla. Yo quiero que la figura gire sobre SU PROPIO centro, entonces:
 //   1) resto el centro a cada punto (muevo la figura al origen)
 //   2) multiplico por la matriz
 //   3) vuelvo a sumar el centro
 // --------------------------------------------------------------------
 
-// esto sirve para encontrar el centro de la figura (el promedio de sus puntos)
+// Esta funcion realiza el calculo del centro de la figura (el promedio de sus puntos).
 static Punto centroDeFigura(const Figura& f)
 {
     Punto centro = { 0.0, 0.0 };
@@ -390,7 +342,8 @@ static Punto centroDeFigura(const Figura& f)
     return centro;
 }
 
-// esto sirve para aplicar cualquier matriz 2x2 a una figura, alrededor de su centro
+// Esta funcion realiza la multiplicacion de cualquier matriz 2x2 por todos los
+// puntos de una figura, tomando como eje su propio centro.
 static void aplicarMatriz(Figura& f, double a, double b, double c, double d)
 {
     Punto centro = centroDeFigura(f);
@@ -410,10 +363,11 @@ static void aplicarMatriz(Figura& f, double a, double b, double c, double d)
         f.radio = f.radio * std::sqrt(std::fabs(a * d - b * c));
 }
 
-// esto sirve para rotar: la matriz de rotacion es  | cos  -sin |
+// Esta funcion realiza la rotacion de una figura. La matriz de rotacion es
+//                                                  | cos  -sin |
 //                                                  | sin   cos |
-// como la Y de la pantalla crece hacia abajo, un angulo positivo gira
-// en el sentido de las manecillas del reloj
+// Como la Y de la pantalla crece hacia abajo, un angulo positivo gira
+// en el sentido de las manecillas del reloj.
 void rotarFigura(int indice, double grados)
 {
     if (indice < 0 || indice >= (int)figuras.size()) return;
@@ -425,7 +379,8 @@ void rotarFigura(int indice, double grados)
     grillaCambio = true;
 }
 
-// esto sirve para escalar: la matriz de escala es  | s  0 |
+// Esta funcion realiza el escalado de una figura (agrandar o achicar).
+// La matriz de escala es                           | s  0 |
 //                                                  | 0  s |
 void escalarFigura(int indice, double factor)
 {

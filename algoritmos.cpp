@@ -1,6 +1,9 @@
 // ====================================================================
 //  algoritmos.cpp
 //  Autor: Juan Camilo Forero Paez
+//
+//  Aqui estan los cuatro algoritmos del proyecto: linea de Bresenham,
+//  circulo de Bresenham, poligono (lineas unidas) y relleno por inundacion.
 // ====================================================================
 #include "algoritmos.h"
 #include <cstdlib>    // abs
@@ -9,16 +12,17 @@
 
 // --------------------------------------------------------------------
 // LINEA DE BRESENHAM
-// la idea: en vez de calcular la pendiente con decimales, uso un numero
+// La idea: en vez de calcular la pendiente con decimales, uso un numero
 // entero D (el parametro de decision) que me dice si la siguiente casilla
-// va en la misma fila o en la fila vecina. asi solo uso sumas y restas.
+// va en la misma fila o en la fila vecina. Asi solo uso sumas y restas.
 //
-// como la linea se comporta distinto segun cuanto se inclina, la parto en
+// Como la linea se comporta distinto segun cuanto se inclina, la parto en
 // dos funciones: una para lineas "mas anchas que altas" (lineaHorizontal)
 // y otra para las "mas altas que anchas" (lineaVertical).
 // --------------------------------------------------------------------
 
-// esto sirve para lineas donde |dx| >= |dy| (avanzo 1 casilla en X cada vez)
+// Esta funcion realiza la linea de Bresenham cuando |dx| >= |dy|
+// (la linea es mas ancha que alta, asi que avanzo 1 casilla en X cada vez).
 static void lineaHorizontal(int x0, int y0, int x1, int y1, std::vector<Celda>& celdas)
 {
     // quiero ir siempre de izquierda a derecha, si no, cambio los puntos
@@ -50,8 +54,9 @@ static void lineaHorizontal(int x0, int y0, int x1, int y1, std::vector<Celda>& 
     }
 }
 
-// esto sirve para lineas donde |dy| > |dx|: es lo mismo pero cambiando los
-// papeles de X y Y (ahora avanzo 1 casilla en Y cada vez)
+// Esta funcion realiza la linea de Bresenham cuando |dy| > |dx|: es lo mismo
+// que la anterior pero cambiando los papeles de X y Y (ahora avanzo 1
+// casilla en Y cada vez).
 static void lineaVertical(int x0, int y0, int x1, int y1, std::vector<Celda>& celdas)
 {
     // quiero ir siempre de arriba hacia abajo
@@ -83,8 +88,9 @@ static void lineaVertical(int x0, int y0, int x1, int y1, std::vector<Celda>& ce
     }
 }
 
-// esto sirve para no tener que pensar cual de las dos usar: comparo que
-// tan grande es el cambio en X contra el cambio en Y
+// Esta funcion realiza la eleccion automatica: compara que tan grande es el
+// cambio en X contra el cambio en Y y llama a la version de Bresenham que
+// corresponde. Esta es la unica que usa el resto del programa.
 void dibujarLinea(int x0, int y0, int x1, int y1, std::vector<Celda>& celdas)
 {
     int dx = x1 - x0;
@@ -97,13 +103,20 @@ void dibujarLinea(int x0, int y0, int x1, int y1, std::vector<Celda>& celdas)
 }
 
 // --------------------------------------------------------------------
-// CIRCULO CON PUNTO MEDIO
-// un circulo es simetrico: si calculo UN octavo (45 grados) puedo sacar
-// los otros 7 por simetria. por eso solo recorro desde arriba hasta la
+// CIRCULO DE BRESENHAM
+// Un circulo es simetrico: si calculo UN octavo (45 grados) saco los otros
+// 7 por simetria. Por eso solo recorro desde la parte de arriba hasta la
 // diagonal y en cada paso pinto 8 casillas.
+//
+// Igual que en la linea, uso un parametro de decision entero D que me dice
+// si la siguiente casilla se queda en la misma fila (y) o baja una fila:
+//    D < 0  -> el punto ideal quedo adentro del circulo: y no cambia
+//    D >= 0 -> el punto ideal quedo afuera: y baja 1 casilla
+// Solo uso sumas, restas y multiplicaciones por enteros (nada de raices).
 // --------------------------------------------------------------------
 
-// esto sirve para pintar los 8 puntos simetricos de (x, y) alrededor del centro
+// Esta funcion realiza el pintado de los 8 puntos simetricos de (x, y)
+// alrededor del centro (cx, cy).
 static void puntosSimetricos(int cx, int cy, int x, int y, std::vector<Celda>& celdas)
 {
     celdas.push_back({ cx + x, cy + y });
@@ -116,38 +129,42 @@ static void puntosSimetricos(int cx, int cy, int x, int y, std::vector<Celda>& c
     celdas.push_back({ cx - y, cy - x });
 }
 
+// Esta funcion realiza el circulo de Bresenham (version de enteros).
+// Ojo con el orden: primero uso (x, y) del punto ACTUAL para actualizar D y
+// decidir si y baja, y hasta el final avanzo x. Si se avanza x antes de
+// actualizar D, el circulo sale deformado.
 void dibujarCirculo(int cx, int cy, int r, std::vector<Celda>& celdas)
 {
     int x = 0;
-    int y = r;
-    int D = 1 - r;                          // parametro de decision inicial
+    int y = r;                  // empiezo en la parte de arriba del circulo
+    int D = 3 - 2 * r;          // parametro de decision inicial de Bresenham
 
-    puntosSimetricos(cx, cy, x, y, celdas); // el primer punto es el de arriba del circulo
-
-    while (x < y)
+    while (y >= x)
     {
-        x = x + 1;                          // x siempre avanza
+        puntosSimetricos(cx, cy, x, y, celdas);   // pinto las 8 casillas de este paso
 
-        if (D < 0)
+        if (D > 0)
         {
-            D = D + 2 * x + 1;              // el punto medio quedo adentro: y no cambia
+            D = D + 4 * (x - y) + 10;             // el punto ideal quedo afuera: y baja 1 casilla
+            y = y - 1;
         }
         else
         {
-            y = y - 1;                      // el punto medio quedo afuera: y baja una casilla
-            D = D + 2 * (x - y) + 1;
+            D = D + 4 * x + 6;                    // el punto ideal quedo adentro: y se queda
         }
 
-        puntosSimetricos(cx, cy, x, y, celdas);
+        x = x + 1;                                // x siempre avanza una casilla
     }
 }
 
 // --------------------------------------------------------------------
 // POLIGONO
-// esto sirve para hacer triangulos, rectangulos y formas libres sin
-// inventar nada nuevo: un poligono es solo una lista de puntos unidos
-// de dos en dos con la linea de Bresenham que ya tengo.
+// Esta seccion realiza triangulos, rectangulos y formas libres sin inventar
+// nada nuevo: un poligono es solo una lista de puntos unidos de dos en dos
+// con la linea de Bresenham que ya tengo.
 // --------------------------------------------------------------------
+// Esta funcion realiza el poligono: recorre los puntos y une cada uno con
+// el siguiente usando dibujarLinea (Bresenham).
 void dibujarPoligono(const std::vector<Celda>& esquinas, bool cerrado, std::vector<Celda>& celdas)
 {
     if (esquinas.empty()) return;
@@ -159,7 +176,7 @@ void dibujarPoligono(const std::vector<Celda>& esquinas, bool cerrado, std::vect
         return;
     }
 
-    // une cada punto con el siguiente
+    // une cada punto con el siguiente (una linea de Bresenham por cada par)
     for (size_t i = 0; i + 1 < esquinas.size(); i++)
         dibujarLinea(esquinas[i].first, esquinas[i].second,
                      esquinas[i + 1].first, esquinas[i + 1].second, celdas);
@@ -172,15 +189,17 @@ void dibujarPoligono(const std::vector<Celda>& esquinas, bool cerrado, std::vect
 
 // --------------------------------------------------------------------
 // RELLENO POR INUNDACION (flood fill)
-// la idea: en vez de buscar "que hay adentro" (es dificil con figuras
-// feas), busco "que hay afuera". empiezo en una esquina que seguro esta
+// La idea: en vez de buscar "que hay adentro" (es dificil con figuras
+// feas), busco "que hay afuera". Empiezo en una esquina que seguro esta
 // afuera y voy llenando de vecino en vecino (arriba, abajo, izquierda,
-// derecha) sin cruzar el contorno. lo que nunca se alcanza es el interior.
+// derecha) sin cruzar el contorno. Lo que nunca se alcanza es el interior.
 //
-// funciona con cualquier figura cerrada, incluso las formas libres con
-// huecos. (la linea de Bresenham es 8-conexa, por eso inundo con 4 vecinos:
-// asi el agua no se cuela por las diagonales del contorno)
+// Funciona con cualquier figura cerrada, incluso las formas libres con
+// huecos. (La linea de Bresenham es 8-conexa, por eso inundo con 4 vecinos:
+// asi el agua no se cuela por las diagonales del contorno.)
 // --------------------------------------------------------------------
+// Esta funcion realiza el relleno por inundacion y devuelve las casillas del
+// interior (las que el agua nunca alcanzo).
 std::vector<Celda> rellenarContorno(const std::vector<Celda>& contorno)
 {
     std::vector<Celda> interior;

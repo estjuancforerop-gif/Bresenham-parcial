@@ -1,6 +1,8 @@
 // ====================================================================
 //  grilla.cpp
 //  Autor: Juan Camilo Forero Paez
+//
+//  Aqui se arma la grilla de casillas y se pintan sus colores.
 // ====================================================================
 #include "grilla.h"
 
@@ -11,7 +13,7 @@ std::vector<Vertex> vertices;
 std::vector<GLuint> indices;
 
 // --------------------------------------------------------------------
-// esto sirve para armar la grilla desde cero.
+// Esta funcion realiza el armado de la grilla desde cero.
 // cada casilla tiene 4 vertices (las esquinas) y 6 indices (2 triangulos):
 //
 //      v0 ---- v1          triangulo 1: v0, v1, v2
@@ -19,14 +21,14 @@ std::vector<GLuint> indices;
 //      |    \   |
 //      v3 ---- v2
 //
-// las posiciones van de -1 a 1 (asi lo pide OpenGL), la fila 0 queda arriba.
+// Las posiciones van de -1 a 1 (asi lo pide OpenGL), la fila 0 queda arriba.
 // --------------------------------------------------------------------
 void construirGrilla()
 {
     vertices.clear();
     indices.clear();
 
-    // esto sirve para dejar un hueco de SEPARACION_PX pixeles entre casillas
+    // este calculo deja un hueco de SEPARACION_PX pixeles entre casillas
     float separacionX = 2.0f * SEPARACION_PX / (columnas * TAMANO_CASILLA_PX);
     float separacionY = 2.0f * SEPARACION_PX / (filas * TAMANO_CASILLA_PX);
 
@@ -58,9 +60,9 @@ void construirGrilla()
 }
 
 // --------------------------------------------------------------------
-// esto sirve para pintar una casilla: busco sus 4 vertices y les cambio el color.
-// si la casilla esta fuera de la grilla no hago nada (asi una figura puede
-// salirse un poco sin que el programa se rompa).
+// Esta funcion realiza el pintado de una casilla: busco sus 4 vertices y les
+// cambio el color. Si la casilla esta fuera de la grilla no hago nada (asi
+// una figura puede salirse un poco sin que el programa se rompa).
 // --------------------------------------------------------------------
 void pintarCelda(int columna, int fila, Color color)
 {
@@ -77,14 +79,14 @@ void pintarCelda(int columna, int fila, Color color)
     }
 }
 
-// esto sirve para pintar todas las casillas que me calculo un algoritmo
+// Esta funcion realiza el pintado de todas las casillas que me calculo un algoritmo.
 void pintarCeldas(const std::vector<Celda>& celdas, Color color)
 {
     for (size_t i = 0; i < celdas.size(); i++)
         pintarCelda(celdas[i].first, celdas[i].second, color);
 }
 
-// esto sirve para borrar todo el dibujo antes de repintar las figuras
+// Esta funcion realiza el borrado de todo el dibujo antes de repintar las figuras.
 void limpiarGrilla()
 {
     for (int fila = 0; fila < filas; fila++)

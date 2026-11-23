@@ -2,13 +2,13 @@
 //  PAINT  -  main.cpp
 //  Autor: Juan Camilo Forero Paez
 //
-//  esto sirve para: abrir la ventana, preparar OpenGL y repetir el
-//  bucle principal. la logica de cada cosa esta en su propio archivo:
+//  Este archivo realiza la apertura de la ventana, la preparacion de
+//  OpenGL y el bucle principal. La logica de cada cosa esta en su propio archivo:
 //
 //     grilla.cpp      -> las casillas y sus colores
-//     algoritmos.cpp  -> Bresenham, punto medio, poligonos y relleno
+//     algoritmos.cpp  -> linea y circulo de Bresenham, poligonos y relleno
 //     figuras.cpp     -> la lista de figuras, rellenar, rotar, escalar, deshacer
-//     interfaz.cpp    -> la barra de herramientas (Dear ImGui) y el mouse
+//     interfaz.cpp    -> el panel de herramientas (Dear ImGui) y el mouse
 //     main.cpp        -> la ventana, los shaders y el bucle (este archivo)
 // ====================================================================
 #include <iostream>
@@ -26,7 +26,7 @@
 
 // --------------------------------------------------------------------
 // SHADERS
-// esto sirve para decirle a la tarjeta grafica como dibujar:
+// Estos dos textos le dicen a la tarjeta grafica como dibujar:
 //  - el vertex shader coloca cada vertice y le pasa su color
 //  - el fragment shader pinta cada pixel con ese color
 // --------------------------------------------------------------------
@@ -48,7 +48,7 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "    FragColor = vec4(ourColor, 1.0f);\n"
 "}\n\0";
 
-// esto sirve para guardar los objetos de OpenGL donde vive la grilla:
+// Estas variables guardan los objetos de OpenGL donde vive la grilla:
 //  VBO guarda los vertices, EBO guarda los indices de los triangulos
 //  y VAO recuerda como leer el VBO
 GLuint VAO = 0, VBO = 0, EBO = 0;
@@ -58,7 +58,7 @@ GLuint programaShader = 0;
 // VENTANA
 // --------------------------------------------------------------------
 
-// esto sirve para crear la ventana y cargar OpenGL con GLAD
+// Esta funcion realiza la creacion de la ventana y la carga de OpenGL con GLAD.
 GLFWwindow* crearVentana()
 {
     glfwInit();
@@ -78,7 +78,7 @@ GLFWwindow* crearVentana()
         return nullptr;
     }
 
-    // tamano minimo para que la barra siempre quepa
+    // tamano minimo para que el panel siempre quepa
     glfwSetWindowSizeLimits(window, ANCHO_MINIMO_PX, ALTO_MINIMO_PX, GLFW_DONT_CARE, GLFW_DONT_CARE);
     glfwMakeContextCurrent(window);
     gladLoadGL();
@@ -90,7 +90,7 @@ GLFWwindow* crearVentana()
 // SHADERS Y BUFFERS
 // --------------------------------------------------------------------
 
-// esto sirve para compilar los dos shaders y juntarlos en un programa
+// Esta funcion realiza la compilacion de los dos shaders y los junta en un programa.
 GLuint crearShaders()
 {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -112,8 +112,8 @@ GLuint crearShaders()
     return programa;
 }
 
-// esto sirve para subir TODA la grilla a la GPU. lo uso al inicio y cada vez
-// que cambia la cantidad de casillas (porque cambia el tamano del arreglo)
+// Esta funcion realiza la subida de TODA la grilla a la GPU. La uso al inicio
+// y cada vez que cambia la cantidad de casillas (porque cambia el tamano del arreglo).
 void subirBuffers()
 {
     glBindVertexArray(VAO);
@@ -129,7 +129,7 @@ void subirBuffers()
     glBindVertexArray(0);
 }
 
-// esto sirve para crear los objetos y decirle a OpenGL como leer cada vertice
+// Esta funcion realiza la creacion de los objetos y le dice a OpenGL como leer cada vertice.
 void crearBuffers()
 {
     glGenVertexArrays(1, &VAO);
@@ -152,7 +152,7 @@ void crearBuffers()
     subirBuffers();   // ahora si, subo la grilla
 }
 
-// esto sirve para mandar solo los colores nuevos (el arreglo mide lo mismo)
+// Esta funcion realiza el envio de solo los colores nuevos (el arreglo mide lo mismo).
 void actualizarVertices()
 {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -164,10 +164,10 @@ void actualizarVertices()
 // LA GRILLA SEGUN LA VENTANA
 // --------------------------------------------------------------------
 
-// esto sirve para que, cuando agrando la ventana, aparezcan MAS casillas
-// (y no que las casillas se estiren). reviso cuantas caben y, si cambio,
-// reconstruyo la grilla. redondeo hacia arriba para que no sobre espacio
-// vacio: la ultima casilla puede quedar cortada.
+// Esta funcion realiza el ajuste de la grilla al tamano de la ventana: cuando
+// agrando la ventana aparecen MAS casillas (no se estiran las casillas).
+// Reviso cuantas caben y, si cambio, reconstruyo la grilla. Redondeo hacia
+// arriba para que no sobre espacio vacio: la ultima casilla puede quedar cortada.
 void ajustarGrillaAlLienzo()
 {
     int nuevasColumnas = std::max(1, (int)std::ceil(lienzo.ancho / TAMANO_CASILLA_PX));
@@ -183,7 +183,7 @@ void ajustarGrillaAlLienzo()
     grillaCambio = true;  // hay que volver a pintar las figuras
 }
 
-// esto sirve para dibujar la grilla con OpenGL en la zona del lienzo
+// Esta funcion realiza el dibujo de la grilla con OpenGL en la zona del lienzo.
 void dibujarGrilla(GLFWwindow* window)
 {
     // en pantallas de alta resolucion los pixeles reales son mas que los de
@@ -214,9 +214,9 @@ void dibujarGrilla(GLFWwindow* window)
 
 // --------------------------------------------------------------------
 // UN CUADRO COMPLETO
-// esto sirve para hacer todo lo que pasa en cada vuelta, en este orden:
+// Esta funcion realiza todo lo que pasa en cada vuelta, en este orden:
 //   1) empiezo el cuadro de ImGui y calculo donde esta el lienzo
-//   2) leo mouse y teclado, y armo la barra
+//   2) leo mouse y teclado, y armo el panel
 //   3) si algo cambio, repinto la grilla y subo los colores
 //   4) dibujo la grilla y encima la interfaz
 // --------------------------------------------------------------------
@@ -228,7 +228,7 @@ void dibujarCuadro(GLFWwindow* window)
 
     // Primero se construye la interfaz para que WantCaptureMouse refleje
     // los controles y popups visibles en ESTE cuadro.
-    dibujarBarra();
+    dibujarPanel();
     procesarMouse();
     procesarTeclado();
 
@@ -252,8 +252,8 @@ void dibujarCuadro(GLFWwindow* window)
     glfwSwapBuffers(window);
 }
 
-// esto sirve para que, en Windows, la ventana se siga redibujando mientras
-// arrastro el borde para cambiarle el tamano (ahi el bucle principal se detiene)
+// Esta funcion realiza el redibujo de la ventana en Windows mientras arrastro
+// el borde para cambiarle el tamano (ahi el bucle principal se detiene).
 void alRefrescarVentana(GLFWwindow* window)
 {
     dibujarCuadro(window);

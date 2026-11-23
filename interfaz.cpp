@@ -1,6 +1,11 @@
 // ====================================================================
 //  interfaz.cpp
 //  Autor: Juan Camilo Forero Paez
+//
+//  Aqui esta todo lo que el usuario toca: el panel de herramientas (Dear
+//  ImGui), la lectura del mouse y del teclado, y lo que pasa con cada click.
+//  El panel es una sola ventana de ImGui con widgets normales (botones de
+//  opcion, deslizadores y selectores de color), sin nada dibujado a mano.
 // ====================================================================
 #include "interfaz.h"
 #include "figuras.h"
@@ -8,39 +13,47 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-Lienzo lienzo = { 0.0f, (float)ALTO_BARRA_PX, (float)ANCHO_INICIAL_PX,
-                  (float)(ALTO_INICIAL_PX - ALTO_BARRA_PX) };
+Lienzo lienzo = { (float)ANCHO_PANEL_PX, 0.0f,
+                  (float)(ANCHO_INICIAL_PX - ANCHO_PANEL_PX), (float)ALTO_INICIAL_PX };
 
 // --------------------------------------------------------------------
 // LAS HERRAMIENTAS
-// las primeras 4 dibujan figuras. las ultimas 2 se aplican a una figura
-// que ya existe (hago click sobre ella).
+// Esta enumeracion guarda las herramientas del panel. Las primeras 6
+// dibujan figuras nuevas. Las ultimas 3 se aplican a una figura que ya
+// existe (hago click sobre ella).
 // --------------------------------------------------------------------
 enum Herramienta
 {
     HERRAMIENTA_LINEA,
-    HERRAMIENTA_CUADRADO,    // con dos clicks tambien sale rectangulo
     HERRAMIENTA_CIRCULO,
+    HERRAMIENTA_RECTANGULO,
+    HERRAMIENTA_CUADRADO,    // es un rectangulo al que se le obligan los lados iguales
     HERRAMIENTA_TRIANGULO,
-    HERRAMIENTA_RELLENO,
-    HERRAMIENTA_ROTAR
+    HERRAMIENTA_LIBRE,       // forma libre: tantos clicks como quiera, se cierra con Enter
+    HERRAMIENTA_RELLENAR,
+    HERRAMIENTA_ROTAR,
+    HERRAMIENTA_ESCALAR
 };
 
+// Esta variable guarda cual herramienta esta elegida ahora mismo.
 static Herramienta herramientaActual = HERRAMIENTA_LINEA;
-static Color colorSeleccionado = { 0.95f, 0.55f, 0.15f };
+
+// Estas dos variables guardan el color del contorno y el color del relleno.
+static Color colorSeleccionado        = { 0.95f, 0.55f, 0.15f };
 static Color colorRellenoSeleccionado = { 0.45f, 0.20f, 0.05f };
 
-// cuanto gira cada click con la herramienta de rotar (en grados)
-static const double GRADOS_POR_CLICK = 15.0;
-// cuanto crece cada click con la herramienta de escalar
-static const double FACTOR_POR_CLICK = 1.25;
+// Estas dos variables las muevo con los deslizadores del panel: cuantos
+// grados gira (o cuanto escala) la figura cada vez que le hago click.
+static int   gradosRotacion = 15;
+static float factorEscala   = 1.25f;
 
-// la casilla donde esta el mouse (se calcula en cada cuadro)
+// Estas variables guardan la casilla donde esta el mouse (se calcula en cada cuadro).
 static int  mouseColumna = 0, mouseFila = 0;
 static bool mouseDentroGrilla = false;
 
@@ -48,7 +61,7 @@ static bool mouseDentroGrilla = false;
 // datos de cada herramienta
 // --------------------------------------------------------------------
 
-// esto sirve para saber que tipo de figura crea cada herramienta de dibujo
+// Esta funcion realiza la consulta de que tipo de figura crea cada herramienta de dibujo.
 static TipoFigura tipoDeHerramienta(Herramienta h)
 {
     switch (h)
@@ -56,26 +69,32 @@ static TipoFigura tipoDeHerramienta(Herramienta h)
     case HERRAMIENTA_LINEA:     return FIGURA_LINEA;
     case HERRAMIENTA_CIRCULO:   return FIGURA_CIRCULO;
     case HERRAMIENTA_TRIANGULO: return FIGURA_TRIANGULO;
-    default:                    return FIGURA_RECTANGULO;
+    case HERRAMIENTA_LIBRE:     return FIGURA_LIBRE;
+    default:                    return FIGURA_RECTANGULO;   // rectangulo y cuadrado
     }
 }
 
-// esto sirve para saber cuantos clicks necesita cada herramienta de dibujo.
+// Esta funcion realiza la consulta de cuantos clicks necesita cada herramienta
+// de dibujo. Devuelve 0 cuando no hay un numero fijo (la forma libre).
 static int clicksNecesarios(Herramienta h)
 {
     switch (h)
     {
     case HERRAMIENTA_TRIANGULO: return 3;
+    case HERRAMIENTA_LIBRE:     return 0;
     default:                    return 2;
     }
 }
 
+// Esta funcion realiza la consulta de si la herramienta crea figuras nuevas
+// (true) o si se aplica a una figura que ya existe (false).
 static bool esHerramientaDeDibujo(Herramienta h)
 {
-    return h <= HERRAMIENTA_TRIANGULO;
+    return h <= HERRAMIENTA_LIBRE;
 }
 
-// esto sirve para dejar un numero dentro de un rango (ej: la columna entre 0 y columnas-1)
+// Esta funcion realiza el ajuste de un numero para dejarlo dentro de un rango
+// (por ejemplo, la columna entre 0 y columnas-1).
 static int limitar(int valor, int minimo, int maximo)
 {
     if (valor < minimo) return minimo;
@@ -87,20 +106,20 @@ static int limitar(int valor, int minimo, int maximo)
 // EL LIENZO Y EL MOUSE
 // --------------------------------------------------------------------
 
-// esto sirve para saber donde queda la grilla en la ventana. la grilla
-// empieza justo debajo de la barra y ocupa todo el espacio que sobra
+// Esta funcion realiza el calculo de donde queda la grilla en la ventana. La
+// grilla empieza justo a la derecha del panel y ocupa todo el espacio que sobra.
 void calcularLienzo()
 {
     ImVec2 ventana = ImGui::GetIO().DisplaySize;
 
-    lienzo.x = 0.0f;
-    lienzo.y = (float)ALTO_BARRA_PX;
-    lienzo.ancho = std::max(ventana.x, 1.0f);
-    lienzo.alto  = std::max(ventana.y - (float)ALTO_BARRA_PX, 1.0f);
+    lienzo.x = (float)ANCHO_PANEL_PX;
+    lienzo.y = 0.0f;
+    lienzo.ancho = std::max(ventana.x - (float)ANCHO_PANEL_PX, 1.0f);
+    lienzo.alto  = std::max(ventana.y, 1.0f);
 }
 
-// esto sirve para convertir los pixeles del mouse en (columna, fila).
-// resto la esquina del lienzo y divido entre el tamano de una casilla
+// Esta funcion realiza la conversion de los pixeles del mouse a (columna, fila).
+// Resto la esquina del lienzo y divido entre el tamano de una casilla.
 static void actualizarCasillaDelMouse()
 {
     ImVec2 m = ImGui::GetMousePos();
@@ -116,7 +135,9 @@ static void actualizarCasillaDelMouse()
     mouseFila    = limitar((int)std::floor(y / TAMANO_CASILLA_PX), 0, filas - 1);
 }
 
-// esto sirve para ver exactamente en que casilla voy a hacer click
+// Esta funcion realiza el marco blanco sobre la casilla donde esta el mouse, para
+// ver exactamente en que casilla voy a hacer click. (Es solo un indicador del
+// cursor, no es una figura: las figuras salen de los algoritmos de algoritmos.cpp.)
 void dibujarCasillaBajoMouse()
 {
     if (!mouseDentroGrilla || ImGui::GetIO().WantCaptureMouse) return;
@@ -132,8 +153,8 @@ void dibujarCasillaBajoMouse()
 // LO QUE PASA CON CADA CLICK
 // --------------------------------------------------------------------
 
-// esto sirve para que con Shift el segundo click del cuadrado salga con los
-// dos lados iguales (cuadrado perfecto) sin salirse de la grilla
+// Esta funcion realiza el ajuste del segundo click del cuadrado: deja los dos
+// lados iguales (cuadrado perfecto) sin salirse de la grilla.
 static Celda ajustarACuadrado(Celda inicio, Celda fin)
 {
     int dx = fin.first  - inicio.first;
@@ -152,7 +173,8 @@ static Celda ajustarACuadrado(Celda inicio, Celda fin)
     return Celda(inicio.first + signoX * lado, inicio.second + signoY * lado);
 }
 
-// esto sirve para terminar la figura: la creo con los clicks que llevo y la agrego a la lista
+// Esta funcion realiza el cierre de la figura: la creo con los clicks que
+// llevo y la agrego a la lista de figuras.
 static void terminarFiguraEnCurso()
 {
     Figura f = crearFigura(enCurso.tipo, enCurso.clicks, enCurso.color);
@@ -161,10 +183,22 @@ static void terminarFiguraEnCurso()
     agregarFigura(f);
 }
 
-// esto sirve para las herramientas de dibujo: cada click agrega un punto
+// Esta funcion realiza el cierre de la forma libre. Una forma libre necesita
+// al menos 3 puntos para ser un poligono; si lleva menos, la descarto.
+static void cerrarFormaLibre()
+{
+    if (!enCurso.activa || enCurso.tipo != FIGURA_LIBRE) return;
+
+    if (enCurso.clicks.size() >= 3)
+        terminarFiguraEnCurso();    // el poligono se cierra solo uniendo el ultimo punto con el primero
+    else
+        cancelarFiguraEnCurso();
+}
+
+// Esta funcion realiza lo que pasa con un click de una herramienta de dibujo:
+// cada click agrega un punto a la figura que estoy haciendo.
 static void clickDeDibujo()
 {
-    ImGuiIO& io = ImGui::GetIO();
     Celda click(mouseColumna, mouseFila);
 
     if (!enCurso.activa)
@@ -175,50 +209,61 @@ static void clickDeDibujo()
         enCurso.color  = colorSeleccionado;
         enCurso.clicks.clear();
     }
-    else if (herramientaActual == HERRAMIENTA_CUADRADO && io.KeyShift)
+    else if (herramientaActual == HERRAMIENTA_CUADRADO)
     {
+        // segundo click del cuadrado: lo corrijo para que los lados sean iguales
         click = ajustarACuadrado(enCurso.clicks[0], click);
     }
 
     enCurso.clicks.push_back(click);
     grillaCambio = true;   // para que se marque el punto
 
-    // si ya tengo todos los clicks, termino la figura (la libre no termina sola)
+    // si ya tengo todos los clicks, termino la figura (la libre no termina sola:
+    // se cierra con Enter, con clic derecho o con el boton del panel)
     int necesarios = clicksNecesarios(herramientaActual);
     if (necesarios > 0 && (int)enCurso.clicks.size() >= necesarios)
         terminarFiguraEnCurso();
 }
 
-// esto sirve para las 3 herramientas que se aplican a una figura que ya existe
+// Esta funcion realiza lo que pasa con un click de las 3 herramientas que se
+// aplican a una figura que ya existe (rellenar, rotar y escalar).
 static void clickSobreFigura()
 {
     int indice = figuraEnCelda(mouseColumna, mouseFila);
     if (indice < 0) return;   // hice click en un lugar vacio
 
-    bool alReves = ImGui::GetIO().KeyShift;   // con Shift hace lo contrario
-
     switch (herramientaActual)
     {
-    case HERRAMIENTA_RELLENO:
+    case HERRAMIENTA_RELLENAR:
         aplicarRellenoFigura(indice, colorRellenoSeleccionado);
         break;
     case HERRAMIENTA_ROTAR:
-        rotarFigura(indice, alReves ? -GRADOS_POR_CLICK : GRADOS_POR_CLICK);
+        rotarFigura(indice, (double)gradosRotacion);
+        break;
+    case HERRAMIENTA_ESCALAR:
+        escalarFigura(indice, (double)factorEscala);
         break;
     default:
         break;
     }
 }
 
-// esto sirve para revisar el mouse en cada cuadro
+// Esta funcion realiza la revision del mouse en cada cuadro.
 void procesarMouse()
 {
     ImGuiIO& io = ImGui::GetIO();
     actualizarCasillaDelMouse();
 
-    // io.WantCaptureMouse es true cuando el mouse esta sobre la barra:
+    // io.WantCaptureMouse es true cuando el mouse esta sobre el panel:
     // ahi NO se dibuja, ahi solo se elige la herramienta
     bool sobreGrilla = mouseDentroGrilla && !io.WantCaptureMouse;
+
+    // clic derecho: cierra la forma libre que estoy haciendo
+    if (sobreGrilla && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+    {
+        cerrarFormaLibre();
+        return;
+    }
 
     if (!sobreGrilla || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return;
 
@@ -228,8 +273,9 @@ void procesarMouse()
         clickSobreFigura();
 }
 
-// esto sirve para los atajos del teclado:
-//   Esc = cancelar la figura que estoy haciendo, Ctrl+Z = deshacer, Supr = borrar todo
+// Esta funcion realiza la lectura de los atajos del teclado:
+//   Esc = cancelar la figura que estoy haciendo, Enter = cerrar la forma libre,
+//   Ctrl+Z = deshacer, Supr = borrar todo
 void procesarTeclado()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -238,6 +284,8 @@ void procesarTeclado()
     {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
             cancelarFiguraEnCurso();
+        else if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
+            cerrarFormaLibre();
         return;   // mientras hago una figura no deshago ni borro nada
     }
 
@@ -248,25 +296,26 @@ void procesarTeclado()
 }
 
 // ====================================================================
-//  LA BARRA DE HERRAMIENTAS (Dear ImGui)
+//  EL PANEL DE HERRAMIENTAS (Dear ImGui)
 //
 //  ImGui funciona en "modo inmediato": en CADA cuadro vuelvo a describir
-//  la barra y ImGui me dice al instante si tocaron algo. por eso no
+//  el panel y ImGui me dice al instante si tocaron algo. Por eso no
 //  guardo botones como objetos: solo escribo
 //      if (ImGui::Button(...)) { ... }
 // ====================================================================
 
-// esto sirve para conectar ImGui con GLFW (eventos) y OpenGL (dibujo)
+// Esta funcion realiza la conexion de ImGui con GLFW (eventos) y OpenGL (dibujo).
 void iniciarGUI(GLFWwindow* window)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::StyleColorsLight();   // colores claros, tipo Paint
+    ImGui::StyleColorsDark();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 }
 
+// Esta funcion realiza el inicio de un cuadro de ImGui (se llama al empezar cada vuelta).
 void comenzarCuadroGUI()
 {
     ImGui_ImplOpenGL3_NewFrame();
@@ -274,12 +323,14 @@ void comenzarCuadroGUI()
     ImGui::NewFrame();
 }
 
+// Esta funcion realiza el cierre del cuadro: manda a dibujar todo lo de ImGui.
 void terminarCuadroGUI()
 {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
+// Esta funcion realiza la liberacion de Dear ImGui al cerrar el programa.
 void cerrarGUI()
 {
     ImGui_ImplOpenGL3_Shutdown();
@@ -287,172 +338,91 @@ void cerrarGUI()
     ImGui::DestroyContext();
 }
 
-// --------------------------------------------------------------------
-// ICONOS
-// esto sirve para dibujar el icono de cada boton con lineas y formas,
-// sin usar imagenes. cada funcion recibe la esquina de arriba-izquierda (a)
-// y la de abajo-derecha (b) del espacio donde se dibuja.
-// --------------------------------------------------------------------
-typedef void (*FuncionIcono)(ImDrawList*, ImVec2, ImVec2, ImU32);
-
-static void iconoLinea(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 color)
+// Esta funcion realiza un boton de opcion para elegir una herramienta. Al
+// cambiar de herramienta descarto la figura que estuviera a medias.
+static void botonDeHerramienta(const char* texto, Herramienta herramienta)
 {
-    dl->AddLine(ImVec2(a.x, b.y), ImVec2(b.x, a.y), color, 3.0f);
-}
-
-static void iconoCuadrado(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 color)
-{
-    dl->AddRect(a, b, color, 0.0f, 0, 3.0f);
-}
-
-static void iconoCirculo(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 color)
-{
-    ImVec2 centro((a.x + b.x) / 2, (a.y + b.y) / 2);
-    dl->AddCircle(centro, (b.x - a.x) / 2, color, 0, 3.0f);
-}
-
-static void iconoTriangulo(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 color)
-{
-    dl->AddTriangle(ImVec2((a.x + b.x) / 2, a.y), ImVec2(b.x, b.y), ImVec2(a.x, b.y), color, 3.0f);
-}
-
-static void iconoRelleno(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 color)
-{
-    dl->AddRectFilled(a, b, ImGui::ColorConvertFloat4ToU32(ImVec4(colorSeleccionado.r, colorSeleccionado.g, colorSeleccionado.b, 1.0f)));
-    dl->AddRect(a, b, color, 0.0f, 0, 3.0f);
-}
-
-static void iconoRotar(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 color)
-{
-    // un arco de 270 grados con una flecha en la punta
-    ImVec2 centro((a.x + b.x) / 2, (a.y + b.y) / 2);
-    float radio = (b.x - a.x) / 2;
-    float fin = 4.7f;   // angulo final del arco (en radianes)
-
-    dl->PathArcTo(centro, radio, 0.0f, fin, 24);
-    dl->PathStroke(color, 0, 3.0f);
-
-    // punta de la flecha: sale del final del arco, en la direccion en la que giro
-    ImVec2 punta(centro.x + radio * std::cos(fin), centro.y + radio * std::sin(fin));
-    ImVec2 tangente(-std::sin(fin), std::cos(fin));
-    ImVec2 normal(std::cos(fin), std::sin(fin));
-    dl->AddTriangleFilled(
-        ImVec2(punta.x + tangente.x * 7, punta.y + tangente.y * 7),
-        ImVec2(punta.x + normal.x * 5, punta.y + normal.y * 5),
-        ImVec2(punta.x - normal.x * 5, punta.y - normal.y * 5), color);
-}
-
-// --------------------------------------------------------------------
-// UN BOTON
-// esto sirve para dibujar un boton cuadrado con su icono (sin texto).
-// el que esta elegido se ve azul.
-// --------------------------------------------------------------------
-static void botonHerramienta(Herramienta herramienta, FuncionIcono icono)
-{
-    bool elegida = (herramientaActual == herramienta);
-
-    ImGui::PushID((int)herramienta);   // cada boton necesita un id distinto
-
-    if (elegida)
+    if (ImGui::RadioButton(texto, herramientaActual == herramienta))
     {
-        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.75f, 0.98f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.55f, 0.75f, 0.98f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_Border,        ImVec4(0.10f, 0.40f, 0.80f, 1.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.5f);
+        herramientaActual = herramienta;
+        cancelarFiguraEnCurso();
     }
-    else
+}
+
+// Esta funcion realiza la consulta del texto de ayuda de la herramienta
+// elegida (se muestra al final del panel).
+static const char* ayudaDeHerramienta()
+{
+    switch (herramientaActual)
     {
-        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.82f, 0.90f, 0.99f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_Border,        ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+    case HERRAMIENTA_LINEA:      return "2 clics: punto inicial y punto final.";
+    case HERRAMIENTA_CIRCULO:    return "2 clics: el centro y un punto del borde.";
+    case HERRAMIENTA_RECTANGULO: return "2 clics: dos esquinas opuestas.";
+    case HERRAMIENTA_CUADRADO:   return "2 clics: una esquina y la esquina contraria (los lados salen iguales).";
+    case HERRAMIENTA_TRIANGULO:  return "3 clics: los 3 vertices.";
+    case HERRAMIENTA_LIBRE:      return "1 clic por vertice. Para cerrar: boton, Enter o clic derecho.";
+    case HERRAMIENTA_RELLENAR:   return "Clic dentro de una figura para rellenarla con el color de relleno.";
+    case HERRAMIENTA_ROTAR:      return "Clic sobre una figura para girarla los grados del deslizador.";
+    default:                     return "Clic sobre una figura para escalarla con el factor del deslizador.";
     }
-
-    // Si vuelvo a pulsar la herramienta de figura que ya estaba activa,
-    // salgo del modo de dibujo y paso directamente al modo de relleno.
-    // Asi el siguiente clic dentro de una figura la pinta, no crea otra.
-    if (ImGui::Button("##boton", ImVec2(54, 54)))
-    {
-        if (herramientaActual == herramienta && esHerramientaDeDibujo(herramienta))
-            herramientaActual = HERRAMIENTA_RELLENO;
-        else
-            herramientaActual = herramienta;
-
-        cancelarFiguraEnCurso();   // descarto cualquier figura que estuviera a medias
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
-
-    // el icono se dibuja ENCIMA del boton, dejando 14 pixeles de margen
-    ImVec2 esqA = ImGui::GetItemRectMin();
-    ImVec2 esqB = ImGui::GetItemRectMax();
-    icono(ImGui::GetWindowDrawList(),
-          ImVec2(esqA.x + 14, esqA.y + 14), ImVec2(esqB.x - 14, esqB.y - 14),
-          IM_COL32(40, 40, 40, 255));
 }
 
 // --------------------------------------------------------------------
-// LA BARRA COMPLETA
-// esto sirve para tener una barra pegada arriba, de todo el ancho, con
-// los 8 botones en fila
+// Esta funcion realiza el panel completo: una ventana pegada a la izquierda,
+// de todo el alto, con las herramientas, los colores y los botones.
 // --------------------------------------------------------------------
-void dibujarBarra()
+void dibujarPanel()
 {
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, (float)ALTO_BARRA_PX));
+    ImGui::SetNextWindowSize(ImVec2((float)ANCHO_PANEL_PX, ImGui::GetIO().DisplaySize.y));
 
     ImGuiWindowFlags banderas = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
-                                ImGuiWindowFlags_NoScrollbar;
-    ImGui::Begin("Barra", nullptr, banderas);
+                                ImGuiWindowFlags_NoCollapse;
+    ImGui::Begin("Herramientas", nullptr, banderas);
 
-    // botones principales de dibujo y edicion
-    struct Boton { Herramienta herramienta; FuncionIcono icono; };
-    const Boton botones[] = {
-        { HERRAMIENTA_LINEA,     iconoLinea     },
-        { HERRAMIENTA_CUADRADO,  iconoCuadrado  },
-        { HERRAMIENTA_CIRCULO,   iconoCirculo   },
-        { HERRAMIENTA_TRIANGULO, iconoTriangulo },
-        { HERRAMIENTA_RELLENO,   iconoRelleno   },
-        { HERRAMIENTA_ROTAR,     iconoRotar     }
-    };
+    // ---- figuras nuevas ----
+    ImGui::Text("Dibujar");
+    ImGui::Separator();
+    botonDeHerramienta("Linea",      HERRAMIENTA_LINEA);
+    botonDeHerramienta("Circulo",    HERRAMIENTA_CIRCULO);
+    botonDeHerramienta("Rectangulo", HERRAMIENTA_RECTANGULO);
+    botonDeHerramienta("Cuadrado",   HERRAMIENTA_CUADRADO);
+    botonDeHerramienta("Triangulo",  HERRAMIENTA_TRIANGULO);
+    botonDeHerramienta("Forma libre", HERRAMIENTA_LIBRE);
 
-    for (int i = 0; i < 6; i++)
-    {
-        if (i > 0) ImGui::SameLine();
-        botonHerramienta(botones[i].herramienta, botones[i].icono);
-        if (botones[i].herramienta == HERRAMIENTA_RELLENO && ImGui::IsItemClicked())
-            ImGui::OpenPopup("Catalogo de colores");
-    }
+    if (herramientaActual == HERRAMIENTA_LIBRE && ImGui::Button("Cerrar forma"))
+        cerrarFormaLibre();
 
+    // ---- figuras que ya existen ----
+    ImGui::Spacing();
+    ImGui::Text("Editar figura");
+    ImGui::Separator();
+    botonDeHerramienta("Rellenar", HERRAMIENTA_RELLENAR);
+    botonDeHerramienta("Rotar",    HERRAMIENTA_ROTAR);
+    ImGui::SliderInt("grados", &gradosRotacion, -180, 180);
+    botonDeHerramienta("Escalar",  HERRAMIENTA_ESCALAR);
+    ImGui::SliderFloat("factor", &factorEscala, 0.5f, 2.0f, "%.2f");
+
+    // ---- colores ----
+    ImGui::Spacing();
+    ImGui::Text("Colores");
+    ImGui::Separator();
+    ImGui::ColorEdit3("borde",   &colorSeleccionado.r,        ImGuiColorEditFlags_NoInputs);
+    ImGui::ColorEdit3("relleno", &colorRellenoSeleccionado.r, ImGuiColorEditFlags_NoInputs);
+
+    // ---- acciones generales ----
+    ImGui::Spacing();
+    if (ImGui::Button("Deshacer") && !enCurso.activa)
+        deshacer();
     ImGui::SameLine();
-    if (herramientaActual == HERRAMIENTA_RELLENO)
-        ImGui::TextColored(ImVec4(0.15f, 0.65f, 0.25f, 1.0f), "Modo: RELLENAR (clic dentro)");
-    else if (esHerramientaDeDibujo(herramientaActual))
-        ImGui::TextUnformatted("Modo: dibujar (pulsa otra vez para rellenar)");
-    else
-        ImGui::TextUnformatted("Modo: editar figura");
+    if (ImGui::Button("Borrar todo") && !enCurso.activa)
+        borrarTodo();
 
-    // Selector de color: permite elegir un tono personalizado (RGB/HSV).
-    if (ImGui::BeginPopup("Catalogo de colores"))
-    {
-        ImGui::TextUnformatted("Color del contorno:");
-        ImGui::ColorPicker3("##colorfigura", &colorSeleccionado.r,
-            ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_DisplayHSV |
-            ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoSidePreview);
-        ImGui::Separator();
-        ImGui::TextUnformatted("Color para rellenar:");
-        ImGui::ColorPicker3("##colorrelleno", &colorRellenoSeleccionado.r,
-            ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_DisplayHSV |
-            ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoSidePreview);
-        ImGui::Separator();
-        ImGui::TextWrapped("Elige el color interior y pulsa Aplicar. Despues haz clic dentro de una figura.");
-        if (ImGui::Button("Aplicar colores", ImVec2(-1, 0)))
-            ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-    }
+    // ---- ayuda y casilla del mouse ----
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextWrapped("%s", ayudaDeHerramienta());
+    ImGui::Text("Casilla: (%d, %d)", mouseColumna, mouseFila);
 
     ImGui::End();
 }
